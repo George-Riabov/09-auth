@@ -11,7 +11,7 @@ import { useNoteStore } from "@/lib/store/noteStore";
 import {
   createNoteAction,
   type CreateNoteActionState,
-} from "@/app/notes/action/create/actions";
+} from "@/app/(private routes)/notes/action/create/actions";
 
 const TAGS: NoteTag[] = ["Todo", "Work", "Personal", "Meeting", "Shopping"];
 const initialState: CreateNoteActionState = { ok: false };

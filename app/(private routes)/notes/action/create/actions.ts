@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createNote } from "@/lib/api";
+import { cookies } from "next/headers";
+import { api } from "@/lib/api/api";
 import type { Note, NoteTag } from "@/types/note";
 
 export type CreateNoteActionState = {
@@ -43,12 +44,26 @@ export async function createNoteAction(
   }
 
   try {
-    const note = await createNote({ title, content, tag: rawTag });
+    const cookieStore = await cookies();
+    const cookieString = cookieStore
+      .getAll()
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+
+    const response = await api.post<Note>(
+      "/notes",
+      { title, content, tag: rawTag },
+      {
+        headers: {
+          Cookie: cookieString,
+        },
+      },
+    );
 
     revalidatePath("/notes");
     revalidatePath("/notes/filter/all");
 
-    return { ok: true, note };
+    return { ok: true, note: response.data };
   } catch (e) {
     return {
       ok: false,

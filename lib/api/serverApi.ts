@@ -1,5 +1,5 @@
+import axios from "axios";
 import { cookies } from "next/headers";
-import { api } from "./api";
 import { Note } from "@/types/note";
 import { User } from "@/types/user";
 
@@ -19,19 +19,32 @@ interface SessionResponse {
   success: boolean;
 }
 
-async function getServerApi() {
+const baseURL = process.env.NEXT_PUBLIC_API_URL + "/api";
+
+function createServerApi(cookieHeader?: string) {
+  return axios.create({
+    baseURL,
+    withCredentials: true,
+    headers: cookieHeader
+      ? {
+          Cookie: cookieHeader,
+        }
+      : undefined,
+  });
+}
+
+async function getCookieHeader() {
   const cookieStore = await cookies();
 
-  const cookieString = cookieStore
+  return cookieStore
     .getAll()
     .map((cookie) => `${cookie.name}=${cookie.value}`)
     .join("; ");
+}
 
-  return api.create({
-    headers: {
-      Cookie: cookieString,
-    },
-  });
+async function getServerApi(cookieHeader?: string) {
+  const finalCookieHeader = cookieHeader ?? (await getCookieHeader());
+  return createServerApi(finalCookieHeader);
 }
 
 export async function fetchNotes(params: FetchNotesParams) {
@@ -51,11 +64,12 @@ export async function fetchNoteById(id: string) {
   return response.data;
 }
 
-export async function checkSession() {
-  const serverApi = await getServerApi();
+export async function checkSession(cookieHeader?: string) {
+  const serverApi = await getServerApi(cookieHeader);
 
   const response = await serverApi.get<SessionResponse>("/auth/session");
-  return response.data;
+
+  return response;
 }
 
 export async function getMe() {

@@ -1,41 +1,21 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import css from "./NoteForm.module.css";
 import type { NoteTag } from "@/types/note";
 import { useNoteStore } from "@/lib/store/noteStore";
-import {
-  createNoteAction,
-  type CreateNoteActionState,
-} from "@/app/(private routes)/notes/action/create/actions";
+import { createNote } from "@/lib/api/clientApi";
 
 const TAGS: NoteTag[] = ["Todo", "Work", "Personal", "Meeting", "Shopping"];
-const initialState: CreateNoteActionState = { ok: false };
-
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
-
-  return (
-    <button
-      type="submit"
-      className={css.submitButton}
-      disabled={disabled || pending}
-    >
-      {pending ? "Creating..." : "Create note"}
-    </button>
-  );
-}
 
 export default function NoteForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { draft, setDraft, clearDraft } = useNoteStore();
 
-  const [state, formAction] = useActionState(createNoteAction, initialState);
   const [clientError, setClientError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => {
@@ -46,10 +26,9 @@ export default function NoteForm() {
     return true;
   }, [draft]);
 
-  useEffect(() => {
-    if (!state.ok) return;
-
-    (async () => {
+  const mutation = useMutation({
+    mutationFn: createNote,
+    onSuccess: async () => {
       clearDraft();
       await queryClient.invalidateQueries({
         queryKey: ["notes"],
@@ -57,8 +36,13 @@ export default function NoteForm() {
       });
       router.replace("/notes/filter/all");
       router.refresh();
-    })();
-  }, [state.ok, clearDraft, queryClient, router]);
+    },
+    onError: (error) => {
+      setClientError(
+        error instanceof Error ? error.message : "Failed to create note.",
+      );
+    },
+  });
 
   const handleFieldChange = (
     name: "title" | "content" | "tag",
@@ -68,24 +52,29 @@ export default function NoteForm() {
       setDraft({ tag: value as NoteTag });
       return;
     }
+
     if (name === "title") setDraft({ title: value });
     if (name === "content") setDraft({ content: value });
   };
 
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setClientError(null);
+
+    if (!canSubmit) {
+      setClientError("Please fix the form fields before submitting.");
+      return;
+    }
+
+    await mutation.mutateAsync({
+      title: draft.title.trim(),
+      content: draft.content.trim(),
+      tag: draft.tag,
+    });
+  };
+
   return (
-    <form
-      className={css.form}
-      action={async (fd) => {
-        setClientError(null);
-
-        if (!canSubmit) {
-          setClientError("Please fix the form fields before submitting.");
-          return;
-        }
-
-        await formAction(fd);
-      }}
-    >
+    <form className={css.form} onSubmit={handleSubmit}>
       <div className={css.formGroup}>
         <label htmlFor="title">Title</label>
         <input
@@ -140,11 +129,17 @@ export default function NoteForm() {
           Cancel
         </button>
 
-        <SubmitButton disabled={!canSubmit} />
+        <button
+          type="submit"
+          className={css.submitButton}
+          disabled={!canSubmit || mutation.isPending}
+        >
+          {mutation.isPending ? "Creating..." : "Create note"}
+        </button>
       </div>
 
-      {(clientError || (!state.ok && state.message)) && (
-        <p className={css.error}>{clientError ?? state.message}</p>
+      {(clientError || mutation.isError) && (
+        <p className={css.error}>{clientError ?? "Failed to create note."}</p>
       )}
     </form>
   );
